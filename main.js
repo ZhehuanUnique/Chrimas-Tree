@@ -97,12 +97,32 @@ async function init() {
         
         // 初始化手势识别
         try {
+            // 等待一小段时间确保视频流稳定
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
             gestureDetector = new HandGestureDetector(video, handleGestureChange);
             await gestureDetector.initialize();
             updateStatus('手势识别已启动！张开5指生成圣诞树，收紧5指清除');
         } catch (gestureError) {
             console.error('手势识别初始化失败:', gestureError);
-            updateStatus('摄像头已启动，但手势识别初始化失败，请刷新页面重试');
+            let errorMsg = '手势识别初始化失败';
+            
+            if (gestureError.message) {
+                if (gestureError.message.includes('MediaPipe')) {
+                    errorMsg = 'MediaPipe 库加载失败，请检查网络连接或刷新页面';
+                } else if (gestureError.message.includes('视频')) {
+                    errorMsg = '视频流问题，请刷新页面重试';
+                } else {
+                    errorMsg = gestureError.message;
+                }
+            }
+            
+            updateStatus(`摄像头已启动，但${errorMsg}`);
+            
+            // 提供重试选项
+            setTimeout(() => {
+                updateStatus('请刷新页面重试，或检查控制台查看详细错误');
+            }, 3000);
         }
         
     } catch (error) {
@@ -168,8 +188,52 @@ function handleGestureChange(gesture) {
     }
 }
 
+// 等待 MediaPipe 库加载
+function waitForMediaPipe() {
+    return new Promise((resolve, reject) => {
+        // 检查是否已经加载
+        if (typeof Hands !== 'undefined') {
+            resolve();
+            return;
+        }
+        
+        // 等待加载
+        let attempts = 0;
+        const maxAttempts = 50; // 最多等待5秒
+        
+        const checkInterval = setInterval(() => {
+            attempts++;
+            if (typeof Hands !== 'undefined') {
+                clearInterval(checkInterval);
+                resolve();
+            } else if (attempts >= maxAttempts) {
+                clearInterval(checkInterval);
+                reject(new Error('MediaPipe Hands 库加载超时'));
+            }
+        }, 100);
+    });
+}
+
 // 页面加载完成后初始化
-window.addEventListener('DOMContentLoaded', init);
+window.addEventListener('DOMContentLoaded', async () => {
+    // 先获取状态元素
+    statusElement = document.getElementById('status');
+    
+    try {
+        // 等待 MediaPipe 库加载
+        updateStatus('正在加载 MediaPipe 库...');
+        await waitForMediaPipe();
+        // 再等待一小段时间确保完全初始化
+        await new Promise(resolve => setTimeout(resolve, 500));
+        // 初始化应用
+        await init();
+    } catch (error) {
+        console.error('初始化失败:', error);
+        if (statusElement) {
+            statusElement.textContent = '初始化失败: ' + (error.message || '未知错误') + '，请刷新页面重试';
+        }
+    }
+});
 
 // 处理页面可见性变化
 document.addEventListener('visibilitychange', () => {

@@ -11,45 +11,90 @@ class HandGestureDetector {
 
     async initialize() {
         return new Promise((resolve, reject) => {
-            this.hands = new Hands({
-                locateFile: (file) => {
-                    return `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469404/${file}`;
-                }
-            });
+            // 检查 MediaPipe Hands 是否已加载
+            if (typeof Hands === 'undefined') {
+                reject(new Error('MediaPipe Hands 库未加载，请检查网络连接或刷新页面'));
+                return;
+            }
 
-            this.hands.setOptions({
-                maxNumHands: 1,
-                modelComplexity: 1,
-                minDetectionConfidence: 0.5,
-                minTrackingConfidence: 0.5
-            });
-
-            this.hands.onResults((results) => {
-                this.processResults(results);
-            });
-
-            // 检查视频是否已准备好
-            if (this.video.readyState >= 2) {
-                // 视频已加载，直接开始处理
-                this.startProcessing();
-                resolve();
-            } else {
-                // 等待视频加载
-                this.video.addEventListener('loadedmetadata', () => {
-                    this.startProcessing();
-                    resolve();
-                }, { once: true });
-                
-                this.video.addEventListener('error', (error) => {
-                    reject(new Error('视频加载失败'));
-                }, { once: true });
-                
-                // 超时处理
-                setTimeout(() => {
-                    if (this.video.readyState < 2) {
-                        reject(new Error('视频加载超时'));
+            try {
+                this.hands = new Hands({
+                    locateFile: (file) => {
+                        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469404/${file}`;
                     }
-                }, 5000);
+                });
+
+                this.hands.setOptions({
+                    maxNumHands: 1,
+                    modelComplexity: 1,
+                    minDetectionConfidence: 0.5,
+                    minTrackingConfidence: 0.5
+                });
+
+                this.hands.onResults((results) => {
+                    this.processResults(results);
+                });
+
+                // 等待视频完全准备好
+                const waitForVideo = () => {
+                    // 检查视频是否有有效的流
+                    if (!this.video.srcObject) {
+                        reject(new Error('视频流未设置'));
+                        return;
+                    }
+
+                    const stream = this.video.srcObject;
+                    const tracks = stream.getVideoTracks();
+                    if (tracks.length === 0 || !tracks[0].enabled) {
+                        reject(new Error('视频轨道未激活'));
+                        return;
+                    }
+
+                    // 检查视频是否已加载元数据
+                    if (this.video.readyState >= 2) {
+                        // 视频已加载，开始处理
+                        this.startProcessing();
+                        resolve();
+                    } else {
+                        // 等待视频加载
+                        const onLoaded = () => {
+                            this.startProcessing();
+                            resolve();
+                        };
+
+                        this.video.addEventListener('loadedmetadata', onLoaded, { once: true });
+                        this.video.addEventListener('loadeddata', onLoaded, { once: true });
+                        this.video.addEventListener('canplay', onLoaded, { once: true });
+                        
+                        this.video.addEventListener('error', (error) => {
+                            reject(new Error('视频加载失败: ' + (error.message || '未知错误')));
+                        }, { once: true });
+                        
+                        // 超时处理
+                        setTimeout(() => {
+                            if (this.video.readyState < 2) {
+                                reject(new Error('视频加载超时，请确保摄像头正常工作'));
+                            }
+                        }, 10000);
+                    }
+                };
+
+                // 如果视频已经加载，直接开始
+                if (this.video.readyState >= 2) {
+                    waitForVideo();
+                } else {
+                    // 等待视频元素准备好
+                    if (this.video.srcObject) {
+                        waitForVideo();
+                    } else {
+                        // 等待一小段时间让视频流设置完成
+                        setTimeout(() => {
+                            waitForVideo();
+                        }, 100);
+                    }
+                }
+            } catch (error) {
+                reject(new Error('初始化 MediaPipe Hands 失败: ' + (error.message || error.toString())));
             }
         });
     }
