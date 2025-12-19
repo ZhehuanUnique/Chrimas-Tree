@@ -11,14 +11,16 @@ class HandGestureDetector {
 
     async initialize() {
         return new Promise((resolve, reject) => {
-            // 检查 MediaPipe Hands 是否已加载
-            if (typeof Hands === 'undefined') {
+            // 检查 MediaPipe Hands 是否已加载（支持多种加载方式）
+            const HandsClass = window.MediaPipeHands || window.Hands || (typeof Hands !== 'undefined' ? Hands : null);
+            
+            if (!HandsClass) {
                 reject(new Error('MediaPipe Hands 库未加载，请检查网络连接或刷新页面'));
                 return;
             }
 
             try {
-                this.hands = new Hands({
+                this.hands = new HandsClass({
                     locateFile: (file) => {
                         return `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469404/${file}`;
                     }

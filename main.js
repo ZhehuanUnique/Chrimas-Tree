@@ -191,8 +191,12 @@ function handleGestureChange(gesture) {
 // 等待 MediaPipe 库加载
 function waitForMediaPipe() {
     return new Promise((resolve, reject) => {
-        // 检查是否已经加载
-        if (typeof Hands !== 'undefined') {
+        // 检查是否已经加载（支持多种加载方式）
+        const checkLoaded = () => {
+            return window.MediaPipeHands || window.Hands || (typeof Hands !== 'undefined' ? Hands : null);
+        };
+        
+        if (checkLoaded()) {
             console.log('MediaPipe Hands already loaded');
             resolve();
             return;
@@ -200,17 +204,17 @@ function waitForMediaPipe() {
         
         // 等待加载，增加超时时间
         let attempts = 0;
-        const maxAttempts = 100; // 最多等待10秒
+        const maxAttempts = 150; // 最多等待15秒
         
         const checkInterval = setInterval(() => {
             attempts++;
-            if (typeof Hands !== 'undefined') {
+            if (checkLoaded()) {
                 clearInterval(checkInterval);
                 console.log('MediaPipe Hands loaded after', attempts * 100, 'ms');
                 resolve();
             } else if (attempts >= maxAttempts) {
                 clearInterval(checkInterval);
-                reject(new Error('MediaPipe Hands 库加载超时，请检查网络连接'));
+                reject(new Error('MediaPipe Hands 库加载超时，请检查网络连接或刷新页面'));
             }
         }, 100);
     });

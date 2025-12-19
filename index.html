@@ -21,93 +21,61 @@
         </div>
     </div>
 
-    <!-- MediaPipe Hands - 动态加载 -->
+    <!-- MediaPipe Hands - 使用官方 CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469404/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466867/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3.1620248257/drawing_utils.js" crossorigin="anonymous"></script>
+    
+    <!-- 备用 CDN（如果主 CDN 失败） -->
     <script>
-        // 动态加载 MediaPipe 库
-        function loadScript(src) {
-            return new Promise((resolve, reject) => {
-                const script = document.createElement('script');
-                script.src = src;
-                script.onload = resolve;
-                script.onerror = () => reject(new Error(`Failed to load ${src}`));
-                document.head.appendChild(script);
-            });
-        }
-
-        // 按顺序加载 MediaPipe 库
-        async function loadMediaPipe() {
-            const cdnBase = 'https://cdn.jsdelivr.net/npm';
-            const fallbackBase = 'https://unpkg.com';
-            
-            const libraries = [
-                { name: 'hands', path: '@mediapipe/hands@0.4.1675469404/hands.js', alt: '@mediapipe/hands@0.4.1675469404' },
-                { name: 'camera_utils', path: '@mediapipe/camera_utils@0.3.1675466867/camera_utils.js', alt: '@mediapipe/camera_utils@0.3.1675466867' },
-                { name: 'drawing_utils', path: '@mediapipe/drawing_utils@0.3.1620248257/drawing_utils.js', alt: '@mediapipe/drawing_utils@0.3.1620248257' }
-            ];
-
-            for (const lib of libraries) {
-                let loaded = false;
-                // 尝试多个路径
-                const paths = [lib.path, lib.alt];
-                
-                for (const path of paths) {
-                    try {
-                        await loadScript(`${cdnBase}/${path}`);
-                        console.log(`Loaded ${lib.name} from jsdelivr`);
-                        loaded = true;
-                        break;
-                    } catch (error) {
-                        console.warn(`Failed to load ${lib.name} from jsdelivr with path ${path}`);
+        // 检查 MediaPipe 是否加载成功
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                if (typeof Hands === 'undefined' && typeof window.Hands === 'undefined') {
+                    console.warn('Primary CDN failed, trying fallback...');
+                    const status = document.getElementById('status');
+                    if (status) {
+                        status.textContent = '正在尝试备用 CDN 加载 MediaPipe...';
                     }
-                }
-                
-                if (!loaded) {
+                    
                     // 尝试备用 CDN
-                    for (const path of paths) {
-                        try {
-                            await loadScript(`${fallbackBase}/${path}`);
-                            console.log(`Loaded ${lib.name} from unpkg`);
-                            loaded = true;
-                            break;
-                        } catch (error) {
-                            console.warn(`Failed to load ${lib.name} from unpkg with path ${path}`);
-                        }
-                    }
-                }
-                
-                if (!loaded) {
-                    throw new Error(`Failed to load ${lib.name} from all CDNs and paths`);
-                }
-            }
-        }
-
-        // 加载 MediaPipe 然后加载应用脚本
-        loadMediaPipe()
-            .then(() => {
-                console.log('MediaPipe libraries loaded successfully');
-                // 加载应用脚本
-                const scripts = ['particle-tree.js', 'hand-gesture.js', 'main.js'];
-                let loaded = 0;
-                scripts.forEach(src => {
-                    const script = document.createElement('script');
-                    script.src = src;
-                    script.onload = () => {
-                        loaded++;
-                        if (loaded === scripts.length) {
-                            console.log('All scripts loaded');
-                        }
+                    const loadScript = (src) => {
+                        return new Promise((resolve, reject) => {
+                            const script = document.createElement('script');
+                            script.src = src;
+                            script.crossOrigin = 'anonymous';
+                            script.onload = resolve;
+                            script.onerror = reject;
+                            document.head.appendChild(script);
+                        });
                     };
-                    document.body.appendChild(script);
-                });
-            })
-            .catch(error => {
-                console.error('Failed to load MediaPipe:', error);
-                const status = document.getElementById('status');
-                if (status) {
-                    status.textContent = 'MediaPipe 库加载失败，请检查网络连接或刷新页面';
+                    
+                    Promise.all([
+                        loadScript('https://unpkg.com/@mediapipe/hands@0.4.1675469404/hands.js'),
+                        loadScript('https://unpkg.com/@mediapipe/camera_utils@0.3.1675466867/camera_utils.js'),
+                        loadScript('https://unpkg.com/@mediapipe/drawing_utils@0.3.1620248257/drawing_utils.js')
+                    ]).then(() => {
+                        console.log('MediaPipe loaded from fallback CDN');
+                        if (status) {
+                            status.textContent = 'MediaPipe 加载成功，正在初始化...';
+                        }
+                    }).catch(error => {
+                        console.error('All CDNs failed:', error);
+                        if (status) {
+                            status.textContent = 'MediaPipe 库加载失败。请检查网络连接，或尝试使用 Chrome/Edge 浏览器';
+                        }
+                    });
+                } else {
+                    console.log('MediaPipe loaded successfully from primary CDN');
                 }
-            });
+            }, 3000);
+        });
     </script>
+    
+    <!-- 应用脚本 -->
+    <script src="particle-tree.js"></script>
+    <script src="hand-gesture.js"></script>
+    <script src="main.js"></script>
 </body>
 </html>
 
