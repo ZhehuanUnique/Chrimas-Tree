@@ -28,24 +28,48 @@ class HandGestureDetector {
                 this.processResults(results);
             });
 
-            this.camera = new Camera(this.video, {
-                onFrame: async () => {
-                    await this.hands.send({ image: this.video });
-                },
-                width: 1280,
-                height: 720
-            });
-
-            this.camera.start()
-                .then(() => {
-                    console.log('摄像头启动成功');
+            // 检查视频是否已准备好
+            if (this.video.readyState >= 2) {
+                // 视频已加载，直接开始处理
+                this.startProcessing();
+                resolve();
+            } else {
+                // 等待视频加载
+                this.video.addEventListener('loadedmetadata', () => {
+                    this.startProcessing();
                     resolve();
-                })
-                .catch((error) => {
-                    console.error('摄像头启动失败:', error);
-                    reject(error);
-                });
+                }, { once: true });
+                
+                this.video.addEventListener('error', (error) => {
+                    reject(new Error('视频加载失败'));
+                }, { once: true });
+                
+                // 超时处理
+                setTimeout(() => {
+                    if (this.video.readyState < 2) {
+                        reject(new Error('视频加载超时'));
+                    }
+                }, 5000);
+            }
         });
+    }
+
+    // 开始处理视频帧
+    startProcessing() {
+        const processFrame = async () => {
+            if (this.video.readyState >= 2) {
+                try {
+                    await this.hands.send({ image: this.video });
+                } catch (error) {
+                    console.error('手势识别处理错误:', error);
+                }
+            }
+            // 使用 requestAnimationFrame 持续处理
+            if (this.video.srcObject && this.video.srcObject.active) {
+                requestAnimationFrame(processFrame);
+            }
+        };
+        processFrame();
     }
 
     // 计算两点之间的距离
@@ -130,8 +154,11 @@ class HandGestureDetector {
 
     // 停止检测
     stop() {
-        if (this.camera) {
-            this.camera.stop();
+        // 停止视频流
+        if (this.video && this.video.srcObject) {
+            const tracks = this.video.srcObject.getTracks();
+            tracks.forEach(track => track.stop());
+            this.video.srcObject = null;
         }
     }
 }
