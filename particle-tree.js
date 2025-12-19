@@ -84,11 +84,18 @@ class ParticleTree {
     // 清除所有粒子
     clear() {
         this.isActive = false;
-        // 让粒子逐渐消失
-        this.particles = this.particles.filter(p => {
-            p.opacity -= 0.02;
-            return p.opacity > 0;
-        });
+        // 让粒子逐渐消失（使用更平滑的淡出）
+        const fadeSpeed = 0.03;
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+            const particle = this.particles[i];
+            particle.opacity -= fadeSpeed;
+            // 同时缩小粒子
+            particle.size *= 0.98;
+            
+            if (particle.opacity <= 0 || particle.size < 0.1) {
+                this.particles.splice(i, 1);
+            }
+        }
     }
 
     // 更新粒子状态
@@ -97,7 +104,12 @@ class ParticleTree {
             return;
         }
 
-        this.particles.forEach(particle => {
+        // 使用更高效的更新方式
+        const particlesToRemove = [];
+        
+        for (let i = 0; i < this.particles.length; i++) {
+            const particle = this.particles[i];
+            
             // 粒子围绕基础位置浮动
             particle.x = particle.baseX + Math.sin(particle.twinkle) * 5;
             particle.y = particle.baseY + Math.cos(particle.twinkle) * 5;
@@ -106,20 +118,34 @@ class ParticleTree {
             particle.x += particle.vx;
             particle.y += particle.vy;
             
-            // 边界反弹
-            if (particle.x < 0 || particle.x > this.canvas.width) particle.vx *= -1;
-            if (particle.y < 0 || particle.y > this.canvas.height) particle.vy *= -1;
+            // 边界反弹（使用更平滑的方式）
+            if (particle.x < 0 || particle.x > this.canvas.width) {
+                particle.vx *= -0.8; // 添加阻尼
+                particle.x = Math.max(0, Math.min(this.canvas.width, particle.x));
+            }
+            if (particle.y < 0 || particle.y > this.canvas.height) {
+                particle.vy *= -0.8;
+                particle.y = Math.max(0, Math.min(this.canvas.height, particle.y));
+            }
             
             // 闪烁效果
             particle.twinkle += particle.twinkleSpeed;
             
-            // 逐渐回到基础位置
-            particle.baseX += (particle.x - particle.baseX) * 0.1;
-            particle.baseY += (particle.y - particle.baseY) * 0.1;
-        });
+            // 逐渐回到基础位置（使用更平滑的插值）
+            const lerpFactor = 0.1;
+            particle.baseX += (particle.x - particle.baseX) * lerpFactor;
+            particle.baseY += (particle.y - particle.baseY) * lerpFactor;
+            
+            // 标记需要移除的粒子
+            if (particle.opacity <= 0) {
+                particlesToRemove.push(i);
+            }
+        }
 
-        // 清除透明度为0的粒子
-        this.particles = this.particles.filter(p => p.opacity > 0);
+        // 从后往前移除，避免索引问题
+        for (let i = particlesToRemove.length - 1; i >= 0; i--) {
+            this.particles.splice(particlesToRemove[i], 1);
+        }
     }
 
     // 渲染粒子

@@ -7,6 +7,7 @@ class HandGestureDetector {
         this.camera = null;
         this.lastGesture = null;
         this.gestureThreshold = 0.5; // 手势变化阈值
+        this.gestureConfirmTimer = null; // 防抖定时器
     }
 
     async initialize() {
@@ -103,14 +104,40 @@ class HandGestureDetector {
 
     // 开始处理视频帧
     startProcessing() {
+        let lastProcessTime = 0;
+        const targetFPS = 30; // 目标帧率，降低处理频率提升性能
+        const frameInterval = 1000 / targetFPS;
+        let isProcessing = false;
+        
         const processFrame = async () => {
-            if (this.video.readyState >= 2) {
+            const now = Date.now();
+            
+            // 限制处理频率，避免过度消耗资源
+            if (now - lastProcessTime < frameInterval) {
+                if (this.video.srcObject && this.video.srcObject.active) {
+                    requestAnimationFrame(processFrame);
+                }
+                return;
+            }
+            
+            if (this.video.readyState >= 2 && !isProcessing) {
+                isProcessing = true;
+                lastProcessTime = now;
+                
                 try {
                     await this.hands.send({ image: this.video });
                 } catch (error) {
-                    console.error('手势识别处理错误:', error);
+                    // 只记录非致命错误
+                    if (error.message && !error.message.includes('closed')) {
+                        console.warn('手势识别处理警告:', error.message);
+                    }
+                    // 错误后等待一段时间再继续
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                } finally {
+                    isProcessing = false;
                 }
             }
+            
             // 使用 requestAnimationFrame 持续处理
             if (this.video.srcObject && this.video.srcObject.active) {
                 requestAnimationFrame(processFrame);
@@ -187,12 +214,29 @@ class HandGestureDetector {
             const gesture = this.detectGesture(landmarks);
             
             // 只有当手势发生变化时才触发回调
+            // 添加防抖：需要连续检测到相同手势才触发
             if (gesture !== this.lastGesture && gesture !== 'unknown') {
-                this.lastGesture = gesture;
-                this.onGestureChange(gesture);
+                // 使用简单的防抖机制
+                if (!this.gestureConfirmTimer) {
+                    this.gestureConfirmTimer = setTimeout(() => {
+                        this.lastGesture = gesture;
+                        this.onGestureChange(gesture);
+                        this.gestureConfirmTimer = null;
+                    }, 200); // 200ms 防抖
+                }
+            } else if (gesture === this.lastGesture) {
+                // 如果手势相同，清除防抖定时器
+                if (this.gestureConfirmTimer) {
+                    clearTimeout(this.gestureConfirmTimer);
+                    this.gestureConfirmTimer = null;
+                }
             }
         } else {
-            // 没有检测到手
+            // 没有检测到手，清除防抖定时器
+            if (this.gestureConfirmTimer) {
+                clearTimeout(this.gestureConfirmTimer);
+                this.gestureConfirmTimer = null;
+            }
             if (this.lastGesture !== null) {
                 this.lastGesture = null;
             }

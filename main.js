@@ -36,7 +36,7 @@ async function init() {
     
     // 请求摄像头权限
     try {
-        updateStatus('正在请求摄像头权限...');
+        updateStatus('正在请求摄像头权限...', 'loading');
         
         const stream = await navigator.mediaDevices.getUserMedia({
             video: {
@@ -93,16 +93,17 @@ async function init() {
             throw new Error('摄像头流未激活');
         }
         
-        updateStatus('摄像头已启动，请将手放在摄像头前');
+        updateStatus('摄像头已启动，请将手放在摄像头前', 'info');
         
         // 初始化手势识别
         try {
             // 等待一小段时间确保视频流稳定
+            updateStatus('正在初始化手势识别...', 'loading');
             await new Promise(resolve => setTimeout(resolve, 500));
             
             gestureDetector = new HandGestureDetector(video, handleGestureChange);
             await gestureDetector.initialize();
-            updateStatus('手势识别已启动！张开5指生成圣诞树，收紧5指清除');
+            updateStatus('✅ 手势识别已启动！张开5指生成圣诞树，收紧5指清除');
         } catch (gestureError) {
             console.error('手势识别初始化失败:', gestureError);
             let errorMsg = '手势识别初始化失败';
@@ -117,11 +118,12 @@ async function init() {
                 }
             }
             
-            updateStatus(`摄像头已启动，但${errorMsg}`);
+            updateStatus(`摄像头已启动，但${errorMsg}`, 'error');
+            handleError(gestureError, '手势识别初始化');
             
             // 提供重试选项
             setTimeout(() => {
-                updateStatus('请刷新页面重试，或检查控制台查看详细错误');
+                updateStatus('请刷新页面重试，或检查控制台查看详细错误', 'error');
             }, 3000);
         }
         
@@ -153,38 +155,66 @@ async function init() {
             errorMessage = `无法访问摄像头: ${error.message || error.name}`;
         }
         
-        updateStatus(errorMessage);
+        updateStatus(errorMessage, 'error');
+        handleError(error, '摄像头初始化');
     }
 }
 
 // 更新状态显示
-function updateStatus(message) {
+function updateStatus(message, type = 'info') {
+    if (!statusElement) return;
+    
     statusElement.textContent = message;
     
-    // 添加闪烁效果
-    statusElement.classList.add('gesture-detected');
-    setTimeout(() => {
-        statusElement.classList.remove('gesture-detected');
-    }, 500);
+    // 移除所有状态类
+    statusElement.classList.remove('gesture-detected', 'error', 'loading');
+    
+    // 根据类型添加相应的类
+    if (type === 'error') {
+        statusElement.classList.add('error');
+    } else if (type === 'loading') {
+        statusElement.classList.add('loading');
+    } else {
+        // 成功状态添加闪烁效果
+        statusElement.classList.add('gesture-detected');
+        setTimeout(() => {
+            statusElement.classList.remove('gesture-detected');
+        }, 500);
+    }
 }
 
 // 处理手势变化
+let gestureCooldown = false;
+
 function handleGestureChange(gesture) {
+    // 添加冷却时间，避免频繁触发
+    if (gestureCooldown) return;
+    
     if (gesture === 'open' && !isGenerating) {
         // 张开5指 - 生成圣诞树
         isGenerating = true;
+        gestureCooldown = true;
+        
         particleTree.generateTree();
         updateStatus('🎄 正在生成圣诞树...');
         
+        // 设置冷却时间
         setTimeout(() => {
             isGenerating = false;
-        }, 1000);
+            gestureCooldown = false;
+        }, 1500);
         
     } else if (gesture === 'closed' && isGenerating) {
         // 收紧5指 - 清除圣诞树
         isGenerating = false;
+        gestureCooldown = true;
+        
         particleTree.clear();
         updateStatus('✨ 正在清除粒子...');
+        
+        setTimeout(() => {
+            gestureCooldown = false;
+        }, 1000);
     }
 }
 
@@ -236,18 +266,53 @@ window.addEventListener('DOMContentLoaded', async () => {
     } catch (error) {
         console.error('初始化失败:', error);
         if (statusElement) {
-            statusElement.textContent = '初始化失败: ' + (error.message || '未知错误') + '，请刷新页面重试';
+            updateStatus('初始化失败: ' + (error.message || '未知错误') + '，请刷新页面重试', 'error');
         }
+        handleError(error, '应用初始化');
     }
 });
 
 // 处理页面可见性变化
 document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
-        // 页面隐藏时停止
+        // 页面隐藏时暂停处理
         if (gestureDetector) {
-            gestureDetector.stop();
+            // 不停止视频流，只是暂停处理
+            console.log('页面隐藏，暂停手势识别');
         }
+    } else {
+        // 页面显示时恢复
+        console.log('页面显示，恢复手势识别');
     }
 });
+
+// 处理窗口失焦/获焦
+window.addEventListener('blur', () => {
+    console.log('窗口失焦');
+});
+
+window.addEventListener('focus', () => {
+    console.log('窗口获焦');
+});
+
+// 添加错误恢复机制
+let errorCount = 0;
+const MAX_ERRORS = 5;
+
+function handleError(error, context) {
+    errorCount++;
+    console.error(`[${context}] 错误 #${errorCount}:`, error);
+    
+    if (errorCount >= MAX_ERRORS) {
+        updateStatus('发生多次错误，建议刷新页面');
+        errorCount = 0; // 重置计数器
+    }
+}
+
+// 定期重置错误计数
+setInterval(() => {
+    if (errorCount > 0) {
+        errorCount = Math.max(0, errorCount - 1);
+    }
+}, 10000); // 每10秒减少1个错误计数
 
