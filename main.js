@@ -193,22 +193,24 @@ function waitForMediaPipe() {
     return new Promise((resolve, reject) => {
         // 检查是否已经加载
         if (typeof Hands !== 'undefined') {
+            console.log('MediaPipe Hands already loaded');
             resolve();
             return;
         }
         
-        // 等待加载
+        // 等待加载，增加超时时间
         let attempts = 0;
-        const maxAttempts = 50; // 最多等待5秒
+        const maxAttempts = 100; // 最多等待10秒
         
         const checkInterval = setInterval(() => {
             attempts++;
             if (typeof Hands !== 'undefined') {
                 clearInterval(checkInterval);
+                console.log('MediaPipe Hands loaded after', attempts * 100, 'ms');
                 resolve();
             } else if (attempts >= maxAttempts) {
                 clearInterval(checkInterval);
-                reject(new Error('MediaPipe Hands 库加载超时'));
+                reject(new Error('MediaPipe Hands 库加载超时，请检查网络连接'));
             }
         }, 100);
     });
