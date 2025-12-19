@@ -87,37 +87,53 @@ async function init() {
             }, { once: true });
         });
         
+        // 验证视频流是否真的在工作
+        const tracks = stream.getVideoTracks();
+        if (tracks.length === 0 || !tracks[0].enabled) {
+            throw new Error('摄像头流未激活');
+        }
+        
         updateStatus('摄像头已启动，请将手放在摄像头前');
         
         // 初始化手势识别
-        gestureDetector = new HandGestureDetector(video, handleGestureChange);
-        await gestureDetector.initialize();
-        
-        updateStatus('手势识别已启动！张开5指生成圣诞树，收紧5指清除');
+        try {
+            gestureDetector = new HandGestureDetector(video, handleGestureChange);
+            await gestureDetector.initialize();
+            updateStatus('手势识别已启动！张开5指生成圣诞树，收紧5指清除');
+        } catch (gestureError) {
+            console.error('手势识别初始化失败:', gestureError);
+            updateStatus('摄像头已启动，但手势识别初始化失败，请刷新页面重试');
+        }
         
     } catch (error) {
         console.error('无法访问摄像头:', error);
         
         let errorMessage = '无法访问摄像头';
+        const isSafari = navigator.userAgent.indexOf('Safari') !== -1 && navigator.userAgent.indexOf('Chrome') === -1;
         
         if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-            errorMessage = '摄像头权限被拒绝，请在浏览器设置中允许摄像头访问';
+            // 权限被拒绝
+            if (isSafari) {
+                errorMessage = '摄像头权限被拒绝。请点击地址栏左侧的摄像头图标，选择"允许"，然后刷新页面';
+            } else {
+                errorMessage = '摄像头权限被拒绝，请在浏览器设置中允许摄像头访问';
+            }
         } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
             errorMessage = '未找到摄像头设备';
         } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
             errorMessage = '摄像头被其他应用占用，请关闭其他应用后重试';
+        } else if (error.message && error.message.includes('超时')) {
+            // 视频加载超时，但可能是权限问题
+            if (isSafari) {
+                errorMessage = '请确保已允许摄像头权限，然后刷新页面重试';
+            } else {
+                errorMessage = '视频加载超时，请刷新页面重试';
+            }
         } else {
             errorMessage = `无法访问摄像头: ${error.message || error.name}`;
         }
         
         updateStatus(errorMessage);
-        
-        // Safari 特殊处理：提示用户手动允许
-        if (navigator.userAgent.indexOf('Safari') !== -1 && navigator.userAgent.indexOf('Chrome') === -1) {
-            setTimeout(() => {
-                updateStatus('Safari 用户：请刷新页面并允许摄像头权限');
-            }, 2000);
-        }
     }
 }
 
